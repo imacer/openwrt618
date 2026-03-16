@@ -1,7 +1,11 @@
-name: Build OpenWrt K6.18
+name: OpenWrt-25.12-K6.18-Standard
 
 on:
   workflow_dispatch:
+
+env:
+  REPO_URL: https://github.com/openwrt/openwrt
+  REPO_BRANCH: openwrt-25.12
 
 jobs:
   build:
@@ -10,37 +14,43 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Init Environment
+      - name: Free Disk Space
+        run: |
+          sudo rm -rf /usr/share/dotnet /usr/local/lib/android /opt/ghc
+          sudo apt-get clean
+
+      - name: Install Dependencies
         run: |
           sudo apt-get update
           sudo apt-get install -y build-essential clang flex bison g++ gawk gcc-multilib g++-multilib \
-          gettext git libncurses-dev libssl-dev python3-distutils rsync unzip zlib1g-dev
+          gettext git libncurses-dev libssl-dev python3-distutils rsync unzip zlib1g-dev swig
 
       - name: Clone Source
-        run: |
-          git clone --depth 1 https://github.com/openwrt/openwrt -b openwrt-25.12
-          
-      - name: Update Feeds
+        run: git clone --depth 1 $REPO_URL -b $REPO_BRANCH openwrt
+
+      - name: Update & Install Feeds
         run: |
           cd openwrt
           ./scripts/feeds update -a
           ./scripts/feeds install -a
 
-      - name: Run DIY Script
+      - name: Setup Custom Config
         run: |
           chmod +x diy-part2.sh
+          ./diy-part2.sh
+          mv .config openwrt/.config
           cd openwrt
-          $GITHUB_WORKSPACE/diy-part2.sh
+          make defconfig
 
       - name: Download & Compile
         run: |
           cd openwrt
-          make defconfig
           make download -j8
+          # 首次编译建议使用单线程排查错误，或使用 nproc 加速
           make -j$(nproc) || make -j1 V=s
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: OpenWrt_X86_64_K6.18
+          name: OpenWrt_x86_64_K6.18
           path: openwrt/bin/targets/x86/64/*.img*
